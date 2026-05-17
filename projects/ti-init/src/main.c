@@ -1,8 +1,10 @@
 #include <sel4/sel4.h>
+#include <sel4/bootinfo.h>
 #include <stddef.h>
 #include "bootstrap.h"
 #include "ti_log.h"
 #include "ti_shell.h"
+#include "ti_uart.h"
 
 int main(int argc, char *argv[])
 {
@@ -14,19 +16,19 @@ int main(int argc, char *argv[])
     print_str("     ██║   ██║    ╚██████╗ ╚██████╔╝██║  ██║███████╗\n");
     print_str("     ╚═╝   ╚═╝     ╚═════╝  ╚═════╝ ╚═╝  ╚═╝╚══════╝\n\n");
     
-    print_str("  Ti-Core v0.1.0-alpha - Ti-Init v0.1.0\n");
+    print_str("  Kernel: Ti-Core v0.1.0-alpha (Open Source)\n");
+    print_str("  OS    : TiOS v0.1.0 (Commercial)\n");
     print_str("  \"Your System. Your Decision.\"\n");
     print_str("  ================================================\n\n");
     
-    ti_log(LOG_INFO, "Kullanici Alani Baslatiliyor...");
+    // Eski C kütüphanesini kullan ve "deprecated" uyarısını görmezden gel 
+    // Derleyici burayı %100 geçecek
+    seL4_BootInfo *info = seL4_GetBootInfo();
     
-    seL4_BootInfo *info = NULL; 
-    ti_bootstrap(info);
+    ti_bootstrap(info);  // Ti-Cap'i gerçek bilgiyle test et
+
+    ti_uart_init();      // Klavye sürücüsünü başlat
     
-    ti_log(LOG_INFO, "VKA ve vspace baslatildi... (simule)");
-    ti_log(LOG_INFO, "Endpoint'ler olusturuldu...");
-    
-    // YENİ EKLEDİĞİMİZ SHELL BAŞLATMA
     ti_shell_init();
     ti_shell_run();
     
