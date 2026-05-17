@@ -271,7 +271,7 @@ void sel4test_stop_tests(test_result_t result, int tests_done, int tests_failed,
     } else if (tests_done < num_tests) {
         printf("*** ALL tests not run ***\n");
     } else {
-        printf("All is well in the universe\n");
+        printf("Ti-Core: All systems nominal. Your system, your decision.\n");
     }
     printf("\n\n");
 }
@@ -415,7 +415,7 @@ void *main_continued(void *arg UNUSED)
 
     /* Print welcome banner. */
     printf("\n");
-    printf("seL4 Test\n");
+    printf("Ti-Core v0.1.0-alpha\n");
     printf("=========\n");
     printf("\n");
 
