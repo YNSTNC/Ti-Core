@@ -1,84 +1,56 @@
+#include <stdbool.h>
 #include "ti_cap.h"
 #include "ti_log.h"
-#include <stddef.h>
+#include "ti_shell.h"
+#include <sel4/sel4.h>
 
-static seL4_BootInfo *ti_boot_info = NULL;
-static seL4_CPtr next_free_slot = 0;
-static seL4_CPtr end_slot = 0;
+extern uint64_t ti_shell_stack[1024];
 
-void ti_cap_init(seL4_BootInfo *info) {
-    if (info == NULL) {
-        ti_log(LOG_ERR, "[Ti-Cap] HATA: BootInfo nesnesi eksik!");
-        return;
-    }
+void ti_cap_init(seL4_BootInfo *info) 
+{
+    if (!info) return;
+
+    ti_printf("[Ti-Cap] 1. CNode icerisindeki bos slot bulunuyor...\n");
+    seL4_CPtr shell_tcb_cap = info->empty.start; 
+
+    ti_printf("[Ti-Cap] 2. Untyped bellek listesi taranarak normal RAM araniyor...\n");
+    seL4_CPtr untyped_cap = 0;
     
-    ti_boot_info = info;
-    next_free_slot = info->empty.start;
-    end_slot = info->empty.end;
-    
-    ti_log(LOG_INFO, "[Ti-Cap] TiOS Capability Yoneticisi aktif.");
-    ti_log(LOG_DEBUG, "[Ti-Cap] Toplam bos yetki yuvasi (Slot): %lu", (unsigned long)(end_slot - next_free_slot));
-    ti_log(LOG_DEBUG, "[Ti-Cap] Untyped bellek sayisi: %d", info->untyped.end - info->untyped.start);
-}
-
-seL4_CPtr ti_cap_alloc_slot(void) {
-    if (next_free_slot >= end_slot) {
-        ti_log(LOG_ERR, "[Ti-Cap] KRITIK HATA: Bos yetki yuvasi kalmadi!");
-        return 0; // Hata
-    }
-    
-    seL4_CPtr allocated = next_free_slot;
-    next_free_slot++;
-    return allocated;
-}
-
-// Çekirdek bize bir sürü ham bellek verdi, uygun boyuttakini bulalım
-seL4_CPtr ti_cap_get_untyped(size_t size_bits) {
-    if (!ti_boot_info) return 0;
-
-    int untyped_start = ti_boot_info->untyped.start;
-    int untyped_end = ti_boot_info->untyped.end;
-
-    for (int i = untyped_start; i < untyped_end; i++) {
-        // Obje tablosundan (untypedList) uyumlu belleği bul
-        if (ti_boot_info->untypedList[i - untyped_start].sizeBits >= size_bits) {
-            // Şimdilik gelişmiş "bölme (retype)" algoritması yazmayacağız,
-            // Bulduğumuz ilk yeterli Untyped blogun CPtr pointerını verelim
-            return i;
+    for (seL4_CPtr cap = info->untyped.start; cap < info->untyped.end; cap++) {
+        seL4_UntypedDesc *desc = &info->untypedList[cap - info->untyped.start];
+        if (!desc->isDevice && desc->sizeBits >= seL4_TCBBits) {
+            untyped_cap = cap;
+            ti_printf("[Ti-Cap] -> Uygun normal bellek bulundu: Cap ID %lu\n", (unsigned long)cap);
+            break;
         }
     }
-    return 0;
-}
 
-// BÜYÜ BURADA: Ham bellekten Gerçek bir Endpoint (Haberleşme objesi) türet (Retype)
-seL4_CPtr ti_cap_create_endpoint(void) {
-    // Endpoint için 4 baytlık (2^4) bellek yeterlidir, ama standart 16 byte'a yuvarlanabilir
-    // seL4_EndpointBits = 4'tür.
-    seL4_CPtr untyped = ti_cap_get_untyped(seL4_EndpointBits);
-    if (untyped == 0) {
-        ti_log(LOG_ERR, "[Ti-Cap] Endpoint icin yeterli Untyped bellek bulunamadi!");
-        return 0;
-    }
+    ti_printf("[Ti-Cap] 3. Secilen bellek TCB Objesine donusturuluyor (Retype)...\n");
+    seL4_Untyped_Retype(untyped_cap, seL4_TCBObject, seL4_TCBBits,
+                        seL4_CapInitThreadCNode, 0, 0, shell_tcb_cap, 1);
+    
+    ti_printf("[Ti-Cap] 4. TCB Yapilandiriliyor (CSpace ve VSpace yetkileri veriliyor)...\n");
+    seL4_TCB_Configure(
+        shell_tcb_cap, seL4_CapNull,
+        seL4_CapInitThreadCNode, seL4_NilData,
+        seL4_CapInitThreadVSpace, seL4_NilData,
+        0, seL4_CapNull
+    );
+    
+    /* Onceligini kendisiyle ayni degil, 1 yuksek yapiyoruz ki hemen buna ZIPLASIN! 
+       seL4 en yuksek öncelikli threadi derhal çalıştırır. */
+    seL4_TCB_SetPriority(shell_tcb_cap, seL4_CapInitThreadTCB, 255);
 
-    // Nereye kaydedeceğiz? Root CNode'da yeni bir CSlot (Boş Yuva) alalım
-    seL4_CPtr target_slot = ti_cap_alloc_slot();
+    ti_printf("[Ti-Cap] 5. Islemci Kaydedicileri (Registers) yaziliyor...\n");
+    seL4_UserContext regs = {0};
+    size_t reg_count = sizeof(seL4_UserContext) / sizeof(seL4_Word);
     
-    // Çekirdek (Ti-Core) komutu: Retype.
-    // Ham veriyi (untyped) al, seL4_EndpointObject şekline sok ve hedef (target_slot) yuvasına tak
-    int err = seL4_Untyped_Retype(untyped,
-                                  seL4_EndpointObject, 
-                                  seL4_EndpointBits, 
-                                  seL4_CapInitThreadCNode, 
-                                  0, // root_depth
-                                  0, // root_offset
-                                  target_slot, 
-                                  1); // Tek obje oluştur
-                                  
-    if (err != seL4_NoError) {
-        ti_log(LOG_ERR, "[Ti-Cap] Endpoint yaratilamadi. Hata kodu: %d", err);
-        return 0;
-    }
-    
-    ti_log(LOG_INFO, "[Ti-Cap] BASARILI! Gercek Endpoint (CNode Slot: %d) yaratildi.", target_slot);
-    return target_slot;
+    seL4_TCB_ReadRegisters(shell_tcb_cap, false, 0, reg_count, &regs);
+    regs.pc = (seL4_Word) ti_shell_start; 
+    regs.sp = (seL4_Word) (ti_shell_stack + 1024);
+    regs.spsr = 0; /* AArch64 EL0 (User Mode) calistirma kosulu! */
+    seL4_TCB_WriteRegisters(shell_tcb_cap, false, 0, reg_count, &regs);
+
+    ti_printf("[Ti-Cap] 6. Ti-Shell TCB Tetikleniyor (Resume)!\n");
+    seL4_TCB_Resume(shell_tcb_cap);
 }

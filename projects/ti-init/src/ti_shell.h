@@ -1,7 +1,5 @@
 #pragma once
+#include <stdint.h>
+#include <stddef.h>
 
-// Shell'i ilk kuran fonksiyon
-void ti_shell_init(void);
-
-// Shell komut döngüsünü başlatan fonksiyon
-void ti_shell_run(void);
+void ti_shell_start(void);
