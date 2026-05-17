@@ -1,0 +1,8 @@
+set(KernelPlatform "qemu-arm-virt" CACHE STRING "")
+set(KernelArch "arm" CACHE STRING "")
+set(KernelSel4Arch "aarch64" CACHE STRING "")
+set(KernelRootCNodeSizeBits 18 CACHE STRING "")
+set(KernelMaxNumNodes 1 CACHE STRING "")
+set(KernelOptimisation "-O2" CACHE STRING "")
+set(KernelVerificationBuild OFF CACHE BOOL "")
+set(KernelSyscall "syscall" CACHE STRING "")

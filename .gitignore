@@ -1,0 +1,13 @@
+# Önce ana dizindeki HER ŞEYİ (gizli dosyalar dahil) yoksay
+/*
+.*
+
+# SADECE ŞUNLARA İZİN VER (İçeri Al):
+!.gitignore
+!/CMakeLists.txt
+!/settings.cmake
+!/projects/
+
+# Projects klasörünün de içindeki her şeyi yoksay, sadece ti-init'e izin ver
+/projects/*
+!/projects/ti-init/
